@@ -1,5 +1,7 @@
 package writebatchqueue
 
+import "fmt"
+
 type Item interface {
 	Serialize() (string, error)
 }
@@ -16,9 +18,13 @@ type ItemBatch struct {
 	BatchListIndex int
 }
 
-func (b *ItemBatch) Append(item Item) {
+func (b *ItemBatch) Append(item Item) error {
+	if b.BatchListIndex == cap(b.BatchList) {
+		return fmt.Errorf("batch is full")
+	}
 	b.BatchList[b.BatchListIndex] = item
 	b.BatchListIndex += 1
+	return nil
 }
 
 func (b *ItemBatch) Size() int {

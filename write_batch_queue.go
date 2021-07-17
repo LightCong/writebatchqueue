@@ -27,7 +27,7 @@ type WriteBatchQueue struct {
 }
 
 //enqueue 需要mutex 保护
-func (wbq *WriteBatchQueue) enqueue(item Item) {
+func (wbq *WriteBatchQueue) pushback(item Item) {
 	newItemBatch := false
 	if wbq.BatchQueue.Len() == 0 {
 		newItemBatch = true
@@ -66,7 +66,7 @@ func (wbq *WriteBatchQueue) Enqueue(item Item) error {
 		if wbq.ItemTotalNum > wbq.ItemNumLimit {
 			return fmt.Errorf("tasks too many  limit is %v", wbq.ItemNumLimit)
 		}
-		wbq.enqueue(item)
+		wbq.pushback(item)
 		return nil
 	}
 	//当前队列状态为free,那么设置一下队列状态
@@ -76,10 +76,10 @@ func (wbq *WriteBatchQueue) Enqueue(item Item) error {
 	//同步执行任务
 	itemBatch := NewItemBatch(1)
 	itemBatch.Append(item)
-	wbq.CommitBatch(itemBatch)
+	wbq.commitBatch(itemBatch)
 
 	//判断队列是否为空 维护一下队列状态。
-	//如果队列中有任务，则开一个异步bthread继续执行
+	//如果队列中有任务，则异步执行, 执行的过程中，新任务进来会入队
 	if wbq.moreTasksOrChangeStatus() {
 		go wbq.Execute()
 	}
@@ -97,7 +97,7 @@ func (wbq *WriteBatchQueue) moreTasksOrChangeStatus() bool {
 	return true
 }
 
-func (wbq *WriteBatchQueue) CommitBatch(batch *ItemBatch) {
+func (wbq *WriteBatchQueue) commitBatch(batch *ItemBatch) {
 	wbq.Storage.CommitWriteBatch(batch)
 }
 
@@ -107,8 +107,12 @@ func (wbq *WriteBatchQueue) Execute() {
 		batch := wbq.popBatch()
 		wbq.Mutex.Unlock()
 
-		if batch {
+		if batch != nil {
+			wbq.commitBatch(batch)
+		}
 
+		if wbq.moreTasksOrChangeStatus() == false {
+			break
 		}
 	}
 }
