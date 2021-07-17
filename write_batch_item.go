@@ -20,3 +20,7 @@ func (b *ItemBatch) Append(item Item) {
 	b.BatchList[b.BatchListIndex] = item
 	b.BatchListIndex += 1
 }
+
+func (b *ItemBatch) Size() int {
+	return len(b.BatchList)
+}

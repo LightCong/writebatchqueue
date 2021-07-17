@@ -17,13 +17,13 @@ type StorageIf interface {
 
 type WriteBatchQueue struct {
 	//tasks 数组
-	BatchQueue list.List // guard by sync.Mutex
-	QueueStatus    int       // guard by sync.Mutex
-	ItemTotalNum   int       // guard by sync.Mutex
-	Mutex          sync.Mutex
-	ItemNumLimit  int
-	BatchSize int
-	Storage  StorageIf
+	BatchQueue   list.List // guard by sync.Mutex
+	QueueStatus  int       // guard by sync.Mutex
+	ItemTotalNum int       // guard by sync.Mutex
+	Mutex        sync.Mutex
+	ItemNumLimit int
+	BatchSize    int
+	Storage      StorageIf
 }
 
 //enqueue 需要mutex 保护
@@ -33,18 +33,30 @@ func (wbq *WriteBatchQueue) enqueue(item Item) {
 		newItemBatch = true
 	} else {
 		lastItemBatch := wbq.BatchQueue.Back().Value.(*ItemBatch)
-		if len(lastItemBatch.BatchList) == wbq.BatchSize {
+		if lastItemBatch.Size() == wbq.BatchSize {
 			newItemBatch = true
 		}
 	}
 	if newItemBatch {
-		//create TaskBatch
+		// create newItemBatch
 		itemBatch := NewItemBatch(wbq.BatchSize)
 		wbq.BatchQueue.PushBack(itemBatch)
 	}
 	lastBatch := wbq.BatchQueue.Back().Value.(*ItemBatch)
 	lastBatch.Append(item)
-	wbq.ItemNumLimit += 1
+	wbq.ItemTotalNum += 1
+}
+
+//popBatch 需要mutex 保护
+func (wbq *WriteBatchQueue) popBatch() *ItemBatch {
+	if wbq.BatchQueue.Len() == 0 {
+		return nil
+	}
+	ele := wbq.BatchQueue.Front()
+	firstBatch := wbq.BatchQueue.Front().Value.(*ItemBatch)
+	wbq.BatchQueue.Remove(ele)
+	wbq.ItemTotalNum -= firstBatch.Size()
+	return firstBatch
 }
 
 func (wbq *WriteBatchQueue) Enqueue(item Item) error {
@@ -61,13 +73,15 @@ func (wbq *WriteBatchQueue) Enqueue(item Item) error {
 	wbq.QueueStatus = QueueStatus_Running
 	wbq.Mutex.Unlock()
 
-	//todo 同步执行任务
-	wbq.ExecTask(t)
+	//同步执行任务
+	itemBatch := NewItemBatch(1)
+	itemBatch.Append(item)
+	wbq.CommitBatch(itemBatch)
 
 	//判断队列是否为空 维护一下队列状态。
 	//如果队列中有任务，则开一个异步bthread继续执行
 	if wbq.moreTasksOrChangeStatus() {
-		go wbq.ExecTasks()
+		go wbq.Execute()
 	}
 	return nil
 }
@@ -83,11 +97,18 @@ func (wbq *WriteBatchQueue) moreTasksOrChangeStatus() bool {
 	return true
 }
 
-func (wbq *WriteBatchQueue) ExecTask(batch *ItemBatch) error {
+func (wbq *WriteBatchQueue) CommitBatch(batch *ItemBatch) {
 	wbq.Storage.CommitWriteBatch(batch)
-	return nil
 }
 
-func (wbq *WriteBatchQueue) ExecTasks() error {
-	return nil
+func (wbq *WriteBatchQueue) Execute() {
+	for {
+		wbq.Mutex.Lock()
+		batch := wbq.popBatch()
+		wbq.Mutex.Unlock()
+
+		if batch {
+
+		}
+	}
 }
