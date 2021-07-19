@@ -2,24 +2,26 @@ package writebatchqueue
 
 import (
 	"fmt"
+	"strconv"
 	"testing"
 )
 
 type MockItem struct {
+	Num int
 }
 
 func (i *MockItem) Serialize() (string, error) {
-	return "abc", nil
+	return strconv.Itoa(i.Num), nil
 }
 
 func TestItemBatch_Append(t *testing.T) {
 	b := NewItemBatch(10)
-	for i:=0;i<10;i++ {
-		mockItem:=&MockItem{}
+	for i := 0; i < 10; i++ {
+		mockItem := &MockItem{}
 		b.Append(mockItem)
-		fmt.Println(b.BatchListIndex,b.BatchList)
+		fmt.Println(b.BatchListIndex, b.BatchList)
 	}
-	mockItem:=&MockItem{}
-	err:=b.Append(mockItem)
+	mockItem := &MockItem{}
+	err := b.Append(mockItem)
 	fmt.Println(err)
 }

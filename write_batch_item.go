@@ -28,5 +28,5 @@ func (b *ItemBatch) Append(item Item) error {
 }
 
 func (b *ItemBatch) Size() int {
-	return len(b.BatchList)
+	return b.BatchListIndex
 }

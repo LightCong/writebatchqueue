@@ -16,14 +16,39 @@ type StorageIf interface {
 }
 
 type WriteBatchQueue struct {
-	//tasks 数组
-	BatchQueue   list.List // guard by sync.Mutex
-	QueueStatus  int       // guard by sync.Mutex
-	ItemTotalNum int       // guard by sync.Mutex
+	BatchQueue   *list.List // guard by sync.Mutex
+	QueueStatus  int        // guard by sync.Mutex
+	ItemTotalNum int        // guard by sync.Mutex
 	Mutex        sync.Mutex
 	ItemNumLimit int
 	BatchSize    int
 	Storage      StorageIf
+}
+
+func NewWriteBatchQueue(batchsize int, itemNumLimit int, storage StorageIf) *WriteBatchQueue {
+	q := &WriteBatchQueue{
+		BatchQueue:   list.New(),
+		QueueStatus:  QueueStatus_Free,
+		ItemNumLimit: itemNumLimit,
+		BatchSize:    batchsize,
+		Storage:      storage,
+		Mutex:        sync.Mutex{},
+	}
+	return q
+}
+
+func (wbq *WriteBatchQueue) traversal() {
+	for i := wbq.BatchQueue.Front(); i != nil; i = i.Next() {
+		//fmt.Printf("%+v,",i.Value)
+		b := i.Value.(*ItemBatch)
+		fmt.Printf("(")
+		for j := 0; j < b.Size(); j++ {
+			s, _ := b.BatchList[j].Serialize()
+			fmt.Printf("%+v,", s)
+		}
+		fmt.Printf(")")
+	}
+	fmt.Printf("\n")
 }
 
 //enqueue 需要mutex 保护
@@ -64,9 +89,11 @@ func (wbq *WriteBatchQueue) Enqueue(item Item) error {
 	wbq.Mutex.Lock()
 	if wbq.QueueStatus == QueueStatus_Running {
 		if wbq.ItemTotalNum > wbq.ItemNumLimit {
+			wbq.Mutex.Unlock()
 			return fmt.Errorf("tasks too many  limit is %v", wbq.ItemNumLimit)
 		}
 		wbq.pushback(item)
+		wbq.Mutex.Unlock()
 		return nil
 	}
 	//当前队列状态为free,那么设置一下队列状态
@@ -89,7 +116,6 @@ func (wbq *WriteBatchQueue) Enqueue(item Item) error {
 func (wbq *WriteBatchQueue) moreTasksOrChangeStatus() bool {
 	wbq.Mutex.Lock()
 	defer wbq.Mutex.Unlock()
-
 	if wbq.BatchQueue.Len() == 0 {
 		wbq.QueueStatus = QueueStatus_Free
 		return false
